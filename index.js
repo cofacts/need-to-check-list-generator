@@ -8,6 +8,9 @@ const { execSync } = require("child_process");
 
 const { shuffle, isURL } = require("./utils");
 
+const API_URL = "https://cofacts-api.g0v.tw/graphql";
+// const API_URL = "https://cofacts-api.hacktabl.org/graphql";
+
 const DIST = {
   path: "dist",
   filename: "articles.xlsx"
@@ -41,24 +44,60 @@ function Distribution(assign) {
   this.people = parseInt(pair[2]);
 }
 
-async function getArticlesByOrder(amount, order) {
+const listArticleFields = `
+  edges {
+    node {
+      id
+      text
+      hyperlinks {
+        url
+        title
+      }
+      replyCount
+    }
+  }
+`;
+
+async function getNotRepliedArticlesByOrder(amount, order) {
   return new Promise((resolve, reject) => {
     request.post(
       {
-        url: "https://cofacts-api.g0v.tw/graphql",
+        url: API_URL,
         json: {
           query: `{
           ListArticles (first: ${amount}, orderBy: ${order}, filter: {replyCount: {EQ: 0}}) {
-            edges {
-              node {
-                id
-                text
-                hyperlinks {
-                  url
-                  title
-                }
-              }
-            }
+            ${listArticleFields}
+          }
+        }`,
+          operationName: null,
+          variables: null
+        }
+      },
+      function(error, response, body) {
+        if (!error && response.statusCode == 200) {
+          resolve(body.data.ListArticles.edges.map(item => item.node));
+        } else {
+          reject(error);
+        }
+      }
+    );
+  });
+}
+
+async function getNoFeedbackRepliedArticles(amount) {
+  return new Promise((resolve, reject) => {
+    request.post(
+      {
+        url: API_URL,
+        json: {
+          query: `{
+          ListArticles (
+            first: ${amount}
+            orderBy: {createdAt: DESC}
+            filter: {replyCount: {GTE: 1}
+            hasArticleReplyWithMorePositiveFeedback: false
+          }) {
+            ${listArticleFields}
           }
         }`,
           operationName: null,
@@ -82,6 +121,10 @@ function getArticleText({text, hyperlinks}) {
       hyperlink.title ? replacedText.replace(hyperlink.url, `[${hyperlink.title}](${hyperlink.url})`) : replacedText,
     text.replace(/\n|\r/g, ' ')
   )
+}
+
+function getArticleState({replyCount}) {
+  return replyCount > 0 ? '🈶' : '🆕';
 }
 
 function AddHyperlinkToURL(worksheet) {
@@ -112,25 +155,38 @@ function AddHyperlinkToURL(worksheet) {
     (acc, cur) => (acc += cur.number * cur.people),
     0
   );
-  const newest = await getArticlesByOrder(amount, "{createdAt: DESC}");
-  const mostAsked = await getArticlesByOrder(
+  const newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
+  console.log(`Fetched ${newest.length} latest not-replied articles.`);
+
+  const mostAsked = await getNotRepliedArticlesByOrder(
     amount,
     "{replyRequestCount: DESC}"
   );
-  const list = shuffle(
+  console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
+
+  const repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
+  console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
+
+  let articleIds = shuffle(
     Array.from(new Set([...newest, ... mostAsked].map(({id}) => id)))
   ).slice(0, amount);
-  const idToArticle = [...newest, ... mostAsked].reduce((map, node) => {
+
+  if(articleIds.length < amount) {
+    const articleIdsWithRepliedIds = [...articleIds, ...repliedButNotEnoughFeedback.map(({id}) => id)];
+    articleIds = shuffle(articleIdsWithRepliedIds.slice(0, amount));
+  }
+
+  const idToArticle = [...newest, ...mostAsked, ...repliedButNotEnoughFeedback].reduce((map, node) => {
     map[node.id] = node;
     return map;
   }, {});
 
   try {
-    if (list.length < amount) {
+    if (articleIds.length < amount) {
       throw new Error(
         `Only ${
-          list.length
-        } articles haven't replied, but you requested total ${amount} articles. Please adjsut your params.`
+          articleIds.length
+        } articles available, but you requested total ${amount} articles. Please adjsut your params.`
       );
     }
   } catch (e) {
@@ -140,8 +196,9 @@ function AddHyperlinkToURL(worksheet) {
 
   const jsons = flat.map((num, idx) => {
     const cursor = flat.slice(0, idx).reduce((acc, cur) => (acc += cur), 0);
-    return list.slice(cursor, cursor + num).map((articleId, idx) => ({
+    return articleIds.slice(cursor, cursor + num).map((articleId, idx) => ({
       ID: idx + 1,
+      State: getArticleState(idToArticle[articleId]),
       Link: `https://cofacts.g0v.tw/article/${articleId}`,
       Text: getArticleText(idToArticle[articleId]),
       Done: ""
