@@ -205,7 +205,7 @@ function AddHyperlinkToURL(worksheet) {
     }));
   });
 
-  const sheetNames = flat.map((num, idx) => `No. ${idx + 1} (Rename tab)`);
+  const sheetNames = flat.map((num, idx) => `No. ${idx + 1}`);
 
   const workbook = {
     SheetNames: sheetNames,
