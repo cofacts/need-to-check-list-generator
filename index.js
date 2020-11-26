@@ -13,8 +13,18 @@ const API_URL = "https://cofacts-api.g0v.tw/graphql";
 
 const DIST = {
   path: "dist",
-  filename: "articles.xlsx"
+  filename: {
+    "BOTH": "articles.xlsx",
+    "FEEDBACK": "articles-feedback.xlsx",
+    "REPLY": "articles-reply.xlsx",
+  }
 };
+
+const MODE = {
+  BOTH: "BOTH",
+  FEEDBACK: "FEEDBACK",
+  REPLY: "REPLY",
+}
 
 const optionDefinitions = [
   {
@@ -27,7 +37,19 @@ const optionDefinitions = [
     name: "number",
     alias: "n",
     type: Number,
-    defaultValue: 100
+    description: 'Number of articles which has no replies or reply has no positive feedbacks.'
+  },
+  {
+    name: "fnumber",
+    alias: "f",
+    type: Number,
+    description: 'Number of articles which reply has no positive feedbacks.'
+  },
+  {
+    name: "rnumber",
+    alias: "r",
+    type: Number,
+    description: 'Number of articles which has no replies.'
   },
   {
     name: "distribution",
@@ -73,7 +95,7 @@ async function getNotRepliedArticlesByOrder(amount, order) {
           variables: null
         }
       },
-      function(error, response, body) {
+      function (error, response, body) {
         if (!error && response.statusCode == 200) {
           resolve(body.data.ListArticles.edges.map(item => item.node));
         } else {
@@ -104,7 +126,7 @@ async function getNoFeedbackRepliedArticles(amount) {
           variables: null
         }
       },
-      function(error, response, body) {
+      function (error, response, body) {
         if (!error && response.statusCode == 200) {
           resolve(body.data.ListArticles.edges.map(item => item.node));
         } else {
@@ -115,7 +137,7 @@ async function getNoFeedbackRepliedArticles(amount) {
   });
 }
 
-function getArticleText({text, hyperlinks}) {
+function getArticleText({ text, hyperlinks }) {
   return (hyperlinks || []).reduce(
     (replacedText, hyperlink) =>
       hyperlink.title ? replacedText.replace(hyperlink.url, `[${hyperlink.title}](${hyperlink.url})`) : replacedText,
@@ -123,7 +145,7 @@ function getArticleText({text, hyperlinks}) {
   )
 }
 
-function getArticleState({replyCount}) {
+function getArticleState({ replyCount }) {
   return replyCount > 0 ? '🈶' : '🆕';
 }
 
@@ -142,50 +164,45 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-(async () => {
-  const options = commandLineArgs(optionDefinitions);
-  const distribution = options.distribution
-    ? options.distribution
-    : [Distribution(`${options.number}:${options.people}`)];
-  const flat = distribution.reduce(
-    (acc, cur) => acc.concat(Array(cur.people).fill(cur.number)),
-    []
-  );
+async function generateNeedToCheckList(distribution, mode) {
+  let newest = [];
+  let mostAsked = [];
+  let repliedButNotEnoughFeedback = [];
+
   const amount = distribution.reduce(
     (acc, cur) => (acc += cur.number * cur.people),
     0
   );
-  const newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
-  console.log(`Fetched ${newest.length} latest not-replied articles.`);
 
-  const mostAsked = await getNotRepliedArticlesByOrder(
-    amount,
-    "{replyRequestCount: DESC}"
-  );
-  console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
+  if (mode !== MODE.FEEDBACK) {
+    newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
+    console.log(`Fetched ${newest.length} latest not-replied articles.`);
 
-  const repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
-  console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
-
-  let articleIds = shuffle(
-    Array.from(new Set([...newest, ... mostAsked].map(({id}) => id)))
-  ).slice(0, amount);
-
-  if(articleIds.length < amount) {
-    const articleIdsWithRepliedIds = [...articleIds, ...repliedButNotEnoughFeedback.map(({id}) => id)];
-    articleIds = shuffle(articleIdsWithRepliedIds.slice(0, amount));
+    mostAsked = await getNotRepliedArticlesByOrder(
+      amount,
+      "{replyRequestCount: DESC}"
+    );
+    console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
   }
 
-  const idToArticle = [...newest, ...mostAsked, ...repliedButNotEnoughFeedback].reduce((map, node) => {
-    map[node.id] = node;
-    return map;
-  }, {});
+  if (mode !== MODE.REPLY) {
+    repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
+    console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
+  }
+
+  let articleIds = shuffle(
+    Array.from(new Set([...newest, ...mostAsked].map(({ id }) => id)))
+  ).slice(0, amount);
+
+  if (articleIds.length < amount) {
+    const articleIdsWithRepliedIds = [...articleIds, ...repliedButNotEnoughFeedback.map(({ id }) => id)];
+    articleIds = shuffle(articleIdsWithRepliedIds.slice(0, amount));
+  }
 
   try {
     if (articleIds.length < amount) {
       throw new Error(
-        `Only ${
-          articleIds.length
+        `Only ${articleIds.length
         } articles available, but you requested total ${amount} articles. Please adjsut your params.`
       );
     }
@@ -193,6 +210,16 @@ function AddHyperlinkToURL(worksheet) {
     console.error(e);
     return;
   }
+
+  const idToArticle = [...newest, ...mostAsked, ...repliedButNotEnoughFeedback].reduce((map, node) => {
+    map[node.id] = node;
+    return map;
+  }, {});
+
+  const flat = distribution.reduce(
+    (acc, cur) => acc.concat(Array(cur.people).fill(cur.number)),
+    []
+  );
 
   const jsons = flat.map((num, idx) => {
     const cursor = flat.slice(0, idx).reduce((acc, cur) => (acc += cur), 0);
@@ -222,7 +249,7 @@ function AddHyperlinkToURL(worksheet) {
     .split(".")[0];
   mkdirp.sync(DIST.path);
 
-  const fileName = `${timestamp}-${DIST.filename}`;
+  const fileName = `${timestamp}-${DIST.filename[mode]}`;
   const filePath = path.resolve(DIST.path)
   XLSX.writeFileAsync(
     path.resolve(DIST.path, fileName),
@@ -230,7 +257,7 @@ function AddHyperlinkToURL(worksheet) {
     () => {
       console.log(`File "${fileName}" has been saved to: ${filePath}`);
 
-      distribution.forEach(function(el) {
+      distribution.forEach(function (el) {
         console.log(`=> ${el.number} articles for ${el.people} people`);
       });
 
@@ -238,4 +265,16 @@ function AddHyperlinkToURL(worksheet) {
       execSync(`open ${filePath}`);
     }
   );
+}
+
+(async () => {
+  const options = commandLineArgs(optionDefinitions);
+  if (options.number)
+    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)], MODE.BOTH);
+  if (options.fnumber)
+    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)], MODE.FEEDBACK);
+  if (options.rnumber)
+    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)], MODE.REPLY);
+  if (options.distribution)
+    await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
