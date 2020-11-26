@@ -27,7 +27,19 @@ const optionDefinitions = [
     name: "number",
     alias: "n",
     type: Number,
-    defaultValue: 100
+    description: 'Number of articles which has no replies or reply has no positive feedbacks.'
+  },
+  {
+    name: "fnumber",
+    alias: "f",
+    type: Number,
+    description: 'Number of articles which reply has no positive feedbacks.'
+  },
+  {
+    name: "rnumber",
+    alias: "r",
+    type: Number,
+    description: 'Number of articles which has no replies.'
   },
   {
     name: "distribution",
@@ -142,14 +154,7 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(options){
-  const distribution = options.distribution
-    ? options.distribution
-    : [Distribution(`${options.number}:${options.people}`)];
-  const flat = distribution.reduce(
-    (acc, cur) => acc.concat(Array(cur.people).fill(cur.number)),
-    []
-  );
+async function generateNeedToCheckList(distribution){
   const amount = distribution.reduce(
     (acc, cur) => (acc += cur.number * cur.people),
     0
@@ -175,11 +180,6 @@ async function generateNeedToCheckList(options){
     articleIds = shuffle(articleIdsWithRepliedIds.slice(0, amount));
   }
 
-  const idToArticle = [...newest, ...mostAsked, ...repliedButNotEnoughFeedback].reduce((map, node) => {
-    map[node.id] = node;
-    return map;
-  }, {});
-
   try {
     if (articleIds.length < amount) {
       throw new Error(
@@ -193,6 +193,16 @@ async function generateNeedToCheckList(options){
     return;
   }
 
+  const idToArticle = [...newest, ...mostAsked, ...repliedButNotEnoughFeedback].reduce((map, node) => {
+    map[node.id] = node;
+    return map;
+  }, {});
+
+  const flat = distribution.reduce(
+    (acc, cur) => acc.concat(Array(cur.people).fill(cur.number)),
+    []
+  );
+  
   const jsons = flat.map((num, idx) => {
     const cursor = flat.slice(0, idx).reduce((acc, cur) => (acc += cur), 0);
     return articleIds.slice(cursor, cursor + num).map((articleId, idx) => ({
@@ -241,5 +251,12 @@ async function generateNeedToCheckList(options){
 
 (async () => {
   const options = commandLineArgs(optionDefinitions);
-  await generateNeedToCheckList(options);
+  if(options.number)
+    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)]);
+  if(options.fnumber)
+    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)]);
+  if(options.rnumber)
+    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)]);
+  if(options.distribution)
+    await generateNeedToCheckList(options.distribution);
 })();
