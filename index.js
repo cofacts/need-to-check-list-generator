@@ -95,7 +95,7 @@ async function getNotRepliedArticlesByOrder(amount, order) {
           variables: null
         }
       },
-      function(error, response, body) {
+      function (error, response, body) {
         if (!error && response.statusCode == 200) {
           resolve(body.data.ListArticles.edges.map(item => item.node));
         } else {
@@ -126,7 +126,7 @@ async function getNoFeedbackRepliedArticles(amount) {
           variables: null
         }
       },
-      function(error, response, body) {
+      function (error, response, body) {
         if (!error && response.statusCode == 200) {
           resolve(body.data.ListArticles.edges.map(item => item.node));
         } else {
@@ -137,7 +137,7 @@ async function getNoFeedbackRepliedArticles(amount) {
   });
 }
 
-function getArticleText({text, hyperlinks}) {
+function getArticleText({ text, hyperlinks }) {
   return (hyperlinks || []).reduce(
     (replacedText, hyperlink) =>
       hyperlink.title ? replacedText.replace(hyperlink.url, `[${hyperlink.title}](${hyperlink.url})`) : replacedText,
@@ -145,7 +145,7 @@ function getArticleText({text, hyperlinks}) {
   )
 }
 
-function getArticleState({replyCount}) {
+function getArticleState({ replyCount }) {
   return replyCount > 0 ? '🈶' : '🆕';
 }
 
@@ -164,7 +164,7 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(distribution, mode){
+async function generateNeedToCheckList(distribution, mode) {
   let newest = [];
   let mostAsked = [];
   let repliedButNotEnoughFeedback = [];
@@ -174,7 +174,7 @@ async function generateNeedToCheckList(distribution, mode){
     0
   );
 
-  if(mode !== MODE.FEEDBACK){
+  if (mode !== MODE.FEEDBACK) {
     newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
     console.log(`Fetched ${newest.length} latest not-replied articles.`);
 
@@ -185,25 +185,24 @@ async function generateNeedToCheckList(distribution, mode){
     console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
   }
 
-  if(mode !== MODE.REPLY){
+  if (mode !== MODE.REPLY) {
     repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
     console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
   }
 
   let articleIds = shuffle(
-    Array.from(new Set([...newest, ... mostAsked].map(({id}) => id)))
+    Array.from(new Set([...newest, ...mostAsked].map(({ id }) => id)))
   ).slice(0, amount);
 
-  if(articleIds.length < amount) {
-    const articleIdsWithRepliedIds = [...articleIds, ...repliedButNotEnoughFeedback.map(({id}) => id)];
+  if (articleIds.length < amount) {
+    const articleIdsWithRepliedIds = [...articleIds, ...repliedButNotEnoughFeedback.map(({ id }) => id)];
     articleIds = shuffle(articleIdsWithRepliedIds.slice(0, amount));
   }
 
   try {
     if (articleIds.length < amount) {
       throw new Error(
-        `Only ${
-          articleIds.length
+        `Only ${articleIds.length
         } articles available, but you requested total ${amount} articles. Please adjsut your params.`
       );
     }
@@ -221,7 +220,7 @@ async function generateNeedToCheckList(distribution, mode){
     (acc, cur) => acc.concat(Array(cur.people).fill(cur.number)),
     []
   );
-  
+
   const jsons = flat.map((num, idx) => {
     const cursor = flat.slice(0, idx).reduce((acc, cur) => (acc += cur), 0);
     return articleIds.slice(cursor, cursor + num).map((articleId, idx) => ({
@@ -258,7 +257,7 @@ async function generateNeedToCheckList(distribution, mode){
     () => {
       console.log(`File "${fileName}" has been saved to: ${filePath}`);
 
-      distribution.forEach(function(el) {
+      distribution.forEach(function (el) {
         console.log(`=> ${el.number} articles for ${el.people} people`);
       });
 
@@ -270,12 +269,12 @@ async function generateNeedToCheckList(distribution, mode){
 
 (async () => {
   const options = commandLineArgs(optionDefinitions);
-  if(options.number)
+  if (options.number)
     await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)], MODE.BOTH);
-  if(options.fnumber)
+  if (options.fnumber)
     await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)], MODE.FEEDBACK);
-  if(options.rnumber)
+  if (options.rnumber)
     await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)], MODE.REPLY);
-  if(options.distribution)
+  if (options.distribution)
     await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
