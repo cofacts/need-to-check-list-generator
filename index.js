@@ -142,8 +142,7 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-(async () => {
-  const options = commandLineArgs(optionDefinitions);
+async function generateNeedToCheckList(options){
   const distribution = options.distribution
     ? options.distribution
     : [Distribution(`${options.number}:${options.people}`)];
@@ -238,4 +237,9 @@ function AddHyperlinkToURL(worksheet) {
       execSync(`open ${filePath}`);
     }
   );
+}
+
+(async () => {
+  const options = commandLineArgs(optionDefinitions);
+  await generateNeedToCheckList(options);
 })();
