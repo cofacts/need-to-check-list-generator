@@ -13,8 +13,18 @@ const API_URL = "https://cofacts-api.g0v.tw/graphql";
 
 const DIST = {
   path: "dist",
-  filename: "articles.xlsx"
+  filename: {
+    "BOTH": "articles.xlsx",
+    "FEEDBACK": "articles-feedback.xlsx",
+    "REPLY": "articles-reply.xlsx",
+  }
 };
+
+const MODE = {
+  BOTH: "BOTH",
+  FEEDBACK: "FEEDBACK",
+  REPLY: "REPLY",
+}
 
 const optionDefinitions = [
   {
@@ -154,22 +164,31 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(distribution){
+async function generateNeedToCheckList(distribution, mode){
+  let newest = [];
+  let mostAsked = [];
+  let repliedButNotEnoughFeedback = [];
+
   const amount = distribution.reduce(
     (acc, cur) => (acc += cur.number * cur.people),
     0
   );
-  const newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
-  console.log(`Fetched ${newest.length} latest not-replied articles.`);
 
-  const mostAsked = await getNotRepliedArticlesByOrder(
-    amount,
-    "{replyRequestCount: DESC}"
-  );
-  console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
+  if(mode !== MODE.FEEDBACK){
+    newest = await getNotRepliedArticlesByOrder(amount, "{createdAt: DESC}");
+    console.log(`Fetched ${newest.length} latest not-replied articles.`);
 
-  const repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
-  console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
+    mostAsked = await getNotRepliedArticlesByOrder(
+      amount,
+      "{replyRequestCount: DESC}"
+    );
+    console.log(`Fetched ${newest.length} most-asked not-replied articles.`)
+  }
+
+  if(mode !== MODE.REPLY){
+    repliedButNotEnoughFeedback = await getNoFeedbackRepliedArticles(amount);
+    console.log(`Fetched ${repliedButNotEnoughFeedback.length} replied articles with not enough feedback.`)
+  }
 
   let articleIds = shuffle(
     Array.from(new Set([...newest, ... mostAsked].map(({id}) => id)))
@@ -231,7 +250,7 @@ async function generateNeedToCheckList(distribution){
     .split(".")[0];
   mkdirp.sync(DIST.path);
 
-  const fileName = `${timestamp}-${DIST.filename}`;
+  const fileName = `${timestamp}-${DIST.filename[mode]}`;
   const filePath = path.resolve(DIST.path)
   XLSX.writeFileAsync(
     path.resolve(DIST.path, fileName),
@@ -252,11 +271,11 @@ async function generateNeedToCheckList(distribution){
 (async () => {
   const options = commandLineArgs(optionDefinitions);
   if(options.number)
-    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)]);
+    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)], MODE.BOTH);
   if(options.fnumber)
-    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)]);
+    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)], MODE.FEEDBACK);
   if(options.rnumber)
-    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)]);
+    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)], MODE.REPLY);
   if(options.distribution)
-    await generateNeedToCheckList(options.distribution);
+    await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
