@@ -8,8 +8,8 @@ const { execSync } = require("child_process");
 
 const { shuffle, isURL } = require("./utils");
 
-const API_URL = "https://cofacts-api.g0v.tw/graphql";
-// const API_URL = "https://cofacts-api.hacktabl.org/graphql";
+const API_URL = "https://api.cofacts.tw/graphql";
+// const API_URL = "https://dev-api.cofacts.tw/graphql";
 
 const DIST = {
   path: "dist",
@@ -226,7 +226,7 @@ async function generateNeedToCheckList(distribution, mode) {
     return articleIds.slice(cursor, cursor + num).map((articleId, idx) => ({
       ID: idx + 1,
       State: getArticleState(idToArticle[articleId]),
-      Link: `https://cofacts.g0v.tw/article/${articleId}`,
+      Link: `https://cofacts.tw/article/${articleId}`,
       Text: getArticleText(idToArticle[articleId]),
       Done: ""
     }));
