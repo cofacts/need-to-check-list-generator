@@ -56,6 +56,13 @@ const optionDefinitions = [
     alias: "d",
     type: Distribution,
     multiple: true
+  },
+  ,
+  {
+    name: "xlsx",
+    alias: "x",
+    type: String,
+    description: 'File path of attendee list downloading form kktix, use this file to rename tabs name as attendees\'.'
   }
 ];
 
@@ -164,7 +171,7 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(distribution, mode) {
+async function generateNeedToCheckList(distribution, mode, attendeeData = null) {
   let newest = [];
   let mostAsked = [];
   let repliedButNotEnoughFeedback = [];
@@ -232,7 +239,12 @@ async function generateNeedToCheckList(distribution, mode) {
     }));
   });
 
-  const sheetNames = flat.map((num, idx) => `No. ${idx + 1}`);
+  const attendeeNames = attendeeData?.map((data) => {
+    const nickName = data["希望被別人稱呼的方式或名稱"];
+    const name = data["Name"];
+    return nickName ? nickName : name;
+  });
+  const sheetNames = flat.map((num, idx) => attendeeNames ? attendeeNames[idx] : `No. ${idx + 1}`);
 
   const workbook = {
     SheetNames: sheetNames,
@@ -269,12 +281,24 @@ async function generateNeedToCheckList(distribution, mode) {
 
 (async () => {
   const options = commandLineArgs(optionDefinitions);
+
+  let attendeeData = null;
+  if (options.xlsx) {
+    const wb = XLSX.readFile(options.xlsx);
+
+    attendeeData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+      // filter activated attendee
+      .filter((data) => { return data["Ticket Status"] == "activated" });
+  }
+
+  const people = attendeeData?.length ?? options.people;
+
   if (options.number)
-    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)], MODE.BOTH);
+    await generateNeedToCheckList([Distribution(`${options.number}:${people}`)], MODE.BOTH, attendeeData);
   if (options.fnumber)
-    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)], MODE.FEEDBACK);
+    await generateNeedToCheckList([Distribution(`${options.fnumber}:${people}`)], MODE.FEEDBACK, attendeeData);
   if (options.rnumber)
-    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)], MODE.REPLY);
+    await generateNeedToCheckList([Distribution(`${options.rnumber}:${people}`)], MODE.REPLY, attendeeData);
   if (options.distribution)
     await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
