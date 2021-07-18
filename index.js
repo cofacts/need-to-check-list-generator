@@ -34,19 +34,19 @@ const optionDefinitions = [
     defaultValue: 2
   },
   {
-    name: "number",
+    name: "replyorfeedback",
     alias: "n",
     type: Number,
     description: 'Number of articles which has no replies or reply has no positive feedbacks.'
   },
   {
-    name: "fnumber",
+    name: "feedback",
     alias: "f",
     type: Number,
     description: 'Number of articles which reply has no positive feedbacks.'
   },
   {
-    name: "rnumber",
+    name: "reply",
     alias: "r",
     type: Number,
     description: 'Number of articles which has no replies.'
@@ -293,12 +293,12 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = null) 
 
   const people = attendeeData?.length ?? options.people;
 
-  if (options.number)
-    await generateNeedToCheckList([Distribution(`${options.number}:${people}`)], MODE.BOTH, attendeeData);
-  if (options.fnumber)
-    await generateNeedToCheckList([Distribution(`${options.fnumber}:${people}`)], MODE.FEEDBACK, attendeeData);
-  if (options.rnumber)
-    await generateNeedToCheckList([Distribution(`${options.rnumber}:${people}`)], MODE.REPLY, attendeeData);
+  if (options.replyorfeedback)
+    await generateNeedToCheckList([Distribution(`${options.replyorfeedback}:${people}`)], MODE.BOTH, attendeeData);
+  if (options.feedback)
+    await generateNeedToCheckList([Distribution(`${options.feedback}:${people}`)], MODE.FEEDBACK, attendeeData);
+  if (options.reply)
+    await generateNeedToCheckList([Distribution(`${options.reply}:${people}`)], MODE.REPLY, attendeeData);
   if (options.distribution)
     await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
