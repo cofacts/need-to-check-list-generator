@@ -171,7 +171,18 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(distribution, mode, attendeeData = null) {
+function getDuplicateNameIdx(attendeeNameIdMap) {
+  const nameIndexMap = attendeeNameIdMap.reduce((acc, cur, idx) => {
+    acc[cur[0]] = acc[cur[0]] || [];
+    acc[cur[0]].push(idx);
+    return acc;
+  }, []);
+
+  return Object.keys(nameIndexMap).reduce((acc, cur) =>
+    acc.concat(nameIndexMap[cur].length > 1 ? nameIndexMap[cur] : []), []);
+}
+
+async function generateNeedToCheckList(distribution, mode, attendeeData = []) {
   let newest = [];
   let mostAsked = [];
   let repliedButNotEnoughFeedback = [];
@@ -239,12 +250,22 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = null) 
     }));
   });
 
-  const attendeeNames = attendeeData?.map((data) => {
+  // return [name, emailId]
+  const attendeeNameIdMap = attendeeData.map((data) => {
     const nickName = data["希望被別人稱呼的方式或名稱"];
-    const name = data["Name"].length == 3 ? data["Name"].substr(1, 2): data["Name"];
-    return nickName ? nickName : name;
+    const name = data["Name"].length == 3 ? data["Name"].substr(1, 2) : data["Name"];
+    const id = data["Email"].split("@")[0];
+    return [(nickName ? nickName.trim() : name.trim()), id.trim()];
   });
-  const sheetNames = flat.map((num, idx) => attendeeNames ? attendeeNames[idx] : `No. ${idx + 1}`);
+
+  const duplicateIndex = getDuplicateNameIdx(attendeeNameIdMap || []);
+
+  const sheetNames = flat.map((num, idx) => attendeeNameIdMap.length > 0 ?
+    // concat the name with emailId if it is a duplicate name.
+    (duplicateIndex.includes(idx) ?
+      attendeeNameIdMap[idx][0] + " (" + attendeeNameIdMap[idx][1] + ")" :
+      attendeeNameIdMap[idx][0]) :
+    `No. ${idx + 1}`);
 
   const workbook = {
     SheetNames: sheetNames,
@@ -282,16 +303,22 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = null) 
 (async () => {
   const options = commandLineArgs(optionDefinitions);
 
-  let attendeeData = null;
+  let attendeeData = [];
   if (options.xlsx) {
     const wb = XLSX.readFile(options.xlsx);
 
     attendeeData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
-      // filter activated attendee
-      .filter((data) => { return data["Ticket Status"] == "activated" });
+      // filter out cancelled attendee and duplicate attendee with same email
+      .reduce((acc, cur) => {
+        if (cur["Ticket Status"] == "activated" &&
+          !Object.values(acc).find(e => e['Email'] === cur["Email"]))
+          acc.push(cur);
+        return acc;
+      }
+        , []);
   }
 
-  const people = attendeeData?.length ?? options.people;
+  const people = attendeeData.length || options.people;
 
   if (options.replyorfeedback)
     await generateNeedToCheckList([Distribution(`${options.replyorfeedback}:${people}`)], MODE.BOTH, attendeeData);
