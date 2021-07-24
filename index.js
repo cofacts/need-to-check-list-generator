@@ -241,7 +241,7 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = null) 
 
   const attendeeNames = attendeeData?.map((data) => {
     const nickName = data["希望被別人稱呼的方式或名稱"];
-    const name = data["Name"];
+    const name = data["Name"].length == 3 ? data["Name"].substr(1, 2): data["Name"];
     return nickName ? nickName : name;
   });
   const sheetNames = flat.map((num, idx) => attendeeNames ? attendeeNames[idx] : `No. ${idx + 1}`);
