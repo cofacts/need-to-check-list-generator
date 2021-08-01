@@ -34,19 +34,19 @@ const optionDefinitions = [
     defaultValue: 2
   },
   {
-    name: "number",
+    name: "replyorfeedback",
     alias: "n",
     type: Number,
     description: 'Number of articles which has no replies or reply has no positive feedbacks.'
   },
   {
-    name: "fnumber",
+    name: "feedback",
     alias: "f",
     type: Number,
     description: 'Number of articles which reply has no positive feedbacks.'
   },
   {
-    name: "rnumber",
+    name: "reply",
     alias: "r",
     type: Number,
     description: 'Number of articles which has no replies.'
@@ -56,6 +56,13 @@ const optionDefinitions = [
     alias: "d",
     type: Distribution,
     multiple: true
+  },
+  ,
+  {
+    name: "xlsx",
+    alias: "x",
+    type: String,
+    description: 'File path of attendee list downloading form kktix, use this file to rename tabs name as attendees\'.'
   }
 ];
 
@@ -164,7 +171,18 @@ function AddHyperlinkToURL(worksheet) {
   }, {});
 }
 
-async function generateNeedToCheckList(distribution, mode) {
+function getDuplicateNameIdx(attendeeNameIdMap) {
+  const nameIndexMap = attendeeNameIdMap.reduce((acc, cur, idx) => {
+    acc[cur[0]] = acc[cur[0]] || [];
+    acc[cur[0]].push(idx);
+    return acc;
+  }, []);
+
+  return Object.keys(nameIndexMap).reduce((acc, cur) =>
+    acc.concat(nameIndexMap[cur].length > 1 ? nameIndexMap[cur] : []), []);
+}
+
+async function generateNeedToCheckList(distribution, mode, attendeeData = []) {
   let newest = [];
   let mostAsked = [];
   let repliedButNotEnoughFeedback = [];
@@ -232,7 +250,22 @@ async function generateNeedToCheckList(distribution, mode) {
     }));
   });
 
-  const sheetNames = flat.map((num, idx) => `No. ${idx + 1}`);
+  // return [name, emailId]
+  const attendeeNameIdMap = attendeeData.map((data) => {
+    const nickName = data["希望被別人稱呼的方式或名稱"];
+    const name = data["Name"].length == 3 ? data["Name"].substr(1, 2) : data["Name"];
+    const id = data["Email"].split("@")[0];
+    return [(nickName ? nickName.trim() : name.trim()), id.trim()];
+  });
+
+  const duplicateIndex = getDuplicateNameIdx(attendeeNameIdMap || []);
+
+  const sheetNames = flat.map((num, idx) => attendeeNameIdMap.length > 0 ?
+    // concat the name with emailId if it is a duplicate name.
+    (duplicateIndex.includes(idx) ?
+      attendeeNameIdMap[idx][0] + " (" + attendeeNameIdMap[idx][1] + ")" :
+      attendeeNameIdMap[idx][0]) :
+    `No. ${idx + 1}`);
 
   const workbook = {
     SheetNames: sheetNames,
@@ -269,12 +302,30 @@ async function generateNeedToCheckList(distribution, mode) {
 
 (async () => {
   const options = commandLineArgs(optionDefinitions);
-  if (options.number)
-    await generateNeedToCheckList([Distribution(`${options.number}:${options.people}`)], MODE.BOTH);
-  if (options.fnumber)
-    await generateNeedToCheckList([Distribution(`${options.fnumber}:${options.people}`)], MODE.FEEDBACK);
-  if (options.rnumber)
-    await generateNeedToCheckList([Distribution(`${options.rnumber}:${options.people}`)], MODE.REPLY);
+
+  let attendeeData = [];
+  if (options.xlsx) {
+    const wb = XLSX.readFile(options.xlsx);
+
+    attendeeData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+      // filter out cancelled attendee and duplicate attendee with same email
+      .reduce((acc, cur) => {
+        if (cur["Ticket Status"] == "activated" &&
+          !Object.values(acc).find(e => e['Email'] === cur["Email"]))
+          acc.push(cur);
+        return acc;
+      }
+        , []);
+  }
+
+  const people = attendeeData.length || options.people;
+
+  if (options.replyorfeedback)
+    await generateNeedToCheckList([Distribution(`${options.replyorfeedback}:${people}`)], MODE.BOTH, attendeeData);
+  if (options.feedback)
+    await generateNeedToCheckList([Distribution(`${options.feedback}:${people}`)], MODE.FEEDBACK, attendeeData);
+  if (options.reply)
+    await generateNeedToCheckList([Distribution(`${options.reply}:${people}`)], MODE.REPLY, attendeeData);
   if (options.distribution)
     await generateNeedToCheckList(options.distribution, MODE.BOTH);
 })();
