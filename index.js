@@ -57,13 +57,18 @@ const optionDefinitions = [
     type: Distribution,
     multiple: true
   },
-  ,
   {
     name: "xlsx",
     alias: "x",
     type: String,
     description: 'File path of attendee list downloading form kktix, use this file to rename tabs name as attendees\'.'
-  }
+  },
+  {
+    name: "backup",
+    alias: "b",
+    type: Number,
+    description: 'Number of extra seats generate form xlsx file. Default is 2.'
+  },
 ];
 
 function Distribution(assign) {
@@ -300,7 +305,7 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = []) {
   );
 }
 
-(async () => {
+async function main() {
   const options = commandLineArgs(optionDefinitions);
 
   let attendeeData = [];
@@ -316,6 +321,14 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = []) {
         return acc;
       }
         , []);
+
+    const backupSeat = options.backup || 2;
+    for (let i = 0; i < backupSeat; i++) {
+      const backup = { ...attendeeData[0] };
+      backup["希望被別人稱呼的方式或名稱"] = `備用${i + 1}`;
+      backup["Email"] = `backup${i + 1}@cofacts.tw`;
+      attendeeData.push(backup);
+    }
   }
 
   const people = attendeeData.length || options.people;
@@ -328,4 +341,7 @@ async function generateNeedToCheckList(distribution, mode, attendeeData = []) {
     await generateNeedToCheckList([Distribution(`${options.reply}:${people}`)], MODE.REPLY, attendeeData);
   if (options.distribution)
     await generateNeedToCheckList(options.distribution, MODE.BOTH);
-})();
+}
+
+(async () => main())();
+
